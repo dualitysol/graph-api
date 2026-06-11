@@ -65,3 +65,60 @@ All filters are registered in `graph.filter.ts` inside the `filterRegistry`. To 
 3. Register the filter using `registerFilter(NAME, () => new MyFilter())`.
 
 The index and the application logic will automatically pick up the new filter. No other parts of the code need to be changed.
+
+## API Query Format
+
+The API exposes a single endpoint `GET /graph` that accepts two query parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `filters` | JSON array of strings | `[]` (no filters) | List of filter types to apply. Valid values: `"publicExposed"`, `"sink"`, `"vulnerability"`. |
+| `mode` | string | `"chain"` | How to combine multiple filters: `"chain"` (sequential) or `"intersect"` (intersection). |
+
+The `filters` parameter must be a **valid JSON array** passed as a query string.  
+Use `encodeURIComponent` or simply wrap the array in quotes in your `curl` command.
+
+### Examples
+
+#### 1. No filters – return the full graph
+
+```bash
+curl "http://localhost:3000/graph"
+```
+
+#### 2. Single filter – public exposed services and everything reachable from them
+
+```bash
+curl "http://localhost:3000/graph?filters=[\"publicExposed\"]"
+```
+
+#### 3. Two filters in **chain** mode (default) – start from public exposed, then from that result find routes that end in a sink
+
+```bash
+curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\"]"
+```
+
+#### 4. Two filters in **intersect** mode – routes that both start from a public exposed service **and** end in a sink
+
+```bash
+curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\"]&mode=intersect"
+```
+
+#### 5. Vulnerability filter – find all routes reachable from any service that has a vulnerability
+
+```bash
+curl "http://localhost:3000/graph?filters=[\"vulnerability\"]"
+```
+
+#### 6. All three filters together in chain mode
+
+```bash
+curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\",\"vulnerability\"]&mode=chain"
+```
+
+### Notes
+
+- If `filters` is omitted or empty, the whole graph is returned.
+- The order of filters in the array matters only in `chain` mode (applied left to right). In `intersect` mode order does not matter.
+- Invalid filter names (e.g., `"unknown"`) will cause a `400 Bad Request` error with a descriptive message.
+- The response format is a JSON object containing `nodes` and `edges` arrays.
