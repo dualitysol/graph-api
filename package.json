@@ -1,0 +1,22 @@
+{
+  "name": "graph-api",
+  "version": "1.0.0",
+  "description": "Train Ticket Micrsoervices graph API for backslash test task",
+  "license": "ISC",
+  "author": "Artem Tantsura <dualitysol@gmail.com>",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "reflect-metadata": "0.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.2",
+    "typescript": "^5.3.3"
+  }
+}
