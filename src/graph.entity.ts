@@ -1,4 +1,5 @@
 import { GraphNode, NormalizedEdge } from './types';
+import { addToMapSet } from './graph.helpers';
 
 export class Graph {
   private nodes: Map<string, GraphNode>;
@@ -17,15 +18,8 @@ export class Graph {
     this.allEdges = edges;
 
     edges.forEach((edge) => {
-      if (!this.outgoing.has(edge.from)) {
-        this.outgoing.set(edge.from, new Set());
-      }
-      this.outgoing.get(edge.from)!.add(edge.to);
-
-      if (!this.incoming.has(edge.to)) {
-        this.incoming.set(edge.to, new Set());
-      }
-      this.incoming.get(edge.to)!.add(edge.from);
+      addToMapSet(this.outgoing, edge.from, edge.to);
+      addToMapSet(this.incoming, edge.to, edge.from);
     });
   }
 

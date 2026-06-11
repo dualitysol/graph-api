@@ -4,6 +4,7 @@ import { GraphIndex } from './graph.index';
 import { createFilter } from './graph.filter';
 import { GraphLoader } from './graph.loader';
 import { GraphNode, NormalizedEdge } from './types';
+import { indexEdges } from './graph.helpers';
 
 export type QueryMode = 'chain' | 'intersect';
 
@@ -69,11 +70,14 @@ export class GraphService {
         result = subgraphResult;
       } else {
         const nodeNames = new Set(result.nodes.map(n => n.name));
-        const edgeKeys = new Set(result.edges.map(e => `${e.from}->${e.to}`));
+        const edgeIndex = indexEdges(result.edges);
 
         result = {
           nodes: subgraphResult.nodes.filter(n => nodeNames.has(n.name)),
-          edges: subgraphResult.edges.filter(e => edgeKeys.has(`${e.from}->${e.to}`)),
+          edges: subgraphResult.edges.filter(e => {
+            const targets = edgeIndex.get(e.from);
+            return targets !== undefined && targets.has(e.to);
+          }),
         };
       }
     });
@@ -81,5 +85,3 @@ export class GraphService {
     return result!;
   }
 }
-
-export const graphService = new GraphService();

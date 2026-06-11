@@ -34,9 +34,12 @@ export abstract class BaseGraphFilter {
 
     let validStartNodes = startNodes;
     if (subgraph) {
-      validStartNodes = new Set(
-        [...startNodes].filter(n => subgraph.hasNode(n))
-      );
+      validStartNodes = new Set<string>();
+      for (const node of startNodes) {
+        if (subgraph.hasNode(node)) {
+          validStartNodes.add(node);
+        }
+      }
       if (validStartNodes.size === 0) return { nodes: [], edges: [] };
     }
 

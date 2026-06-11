@@ -1,7 +1,9 @@
 import { Route } from '../packages/app';
-import { graphService, QueryMode } from './graph.service';
+import { GraphService, QueryMode } from './graph.service';
 import { RequestParser } from '../packages/dto/request.parser';
 import { BadRequestError } from '../packages/errors';
+
+const graphService = new GraphService();
 
 export class GraphController {
 
