@@ -25,9 +25,6 @@ async function main() {
     app.listen(PORT);
     console.log(`Server listening on http://localhost:${PORT}`);
     console.log(`GET /graph - Query the graph with optional filters`);
-    console.log(`GET /health - Health check`);
-    console.log(`GET /filters - Available filters`);
-    console.log(`GET /stats - Graph statistics`);
   } catch (error: any) {
     console.error('Failed to start server:', error?.message || error);
     process.exit(1);
