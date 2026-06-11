@@ -3,7 +3,7 @@ import path from 'path';
 import { RawGraph, NormalizedEdge, GraphNode } from './types';
 
 export class GraphLoader {
-  private static instance: GraphLoader;
+  private static instance: GraphLoader | null = null;
   private graph: RawGraph | null = null;
   private normalizedEdges: NormalizedEdge[] | null = null;
 
@@ -74,3 +74,4 @@ export class GraphLoader {
     return map;
   }
 }
+

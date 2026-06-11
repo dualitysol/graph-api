@@ -17,10 +17,27 @@ export class Graph {
     this.cachedNodes = nodes;
     this.allEdges = edges;
 
-    edges.forEach((edge) => {
+    for (const edge of edges) {
+      if (!this.nodes.has(edge.from)) {
+        console.warn(`[Graph] Broken edge: source "${edge.from}" not found among nodes`);
+        continue;
+      }
+      if (!this.nodes.has(edge.to)) {
+        console.warn(`[Graph] Broken edge: target "${edge.to}" not found among nodes (edge: ${edge.from} -> ${edge.to})`);
+        continue;
+      }
       addToMapSet(this.outgoing, edge.from, edge.to);
       addToMapSet(this.incoming, edge.to, edge.from);
-    });
+    }
+
+    // Log isolated nodes (no incoming or outgoing edges)
+    for (const node of nodes) {
+      const hasOutgoing = this.outgoing.has(node.name);
+      const hasIncoming = this.incoming.has(node.name);
+      if (!hasOutgoing && !hasIncoming) {
+        console.warn(`[Graph] Isolated node: "${node.name}" has no edges`);
+      }
+    }
   }
 
   getNode(name: string): GraphNode | undefined {
