@@ -5,12 +5,16 @@ export class Graph {
   private outgoing: Map<string, Set<string>>;
   private incoming: Map<string, Set<string>>;
   private cachedNodes: GraphNode[];
+  private allEdges: NormalizedEdge[];
+
+  private static readonly EMPTY_SET = new Set<string>();
 
   constructor(nodes: GraphNode[], edges: NormalizedEdge[]) {
     this.nodes = new Map(nodes.map((n) => [n.name, n]));
     this.outgoing = new Map();
     this.incoming = new Map();
     this.cachedNodes = nodes;
+    this.allEdges = edges;
 
     edges.forEach((edge) => {
       if (!this.outgoing.has(edge.from)) {
@@ -33,12 +37,16 @@ export class Graph {
     return this.cachedNodes;
   }
 
+  getAllEdges(): NormalizedEdge[] {
+    return this.allEdges;
+  }
+
   getNeighbors(name: string): Set<string> {
-    return this.outgoing.get(name) ?? new Set();
+    return this.outgoing.get(name) ?? Graph.EMPTY_SET;
   }
 
   getParents(name: string): Set<string> {
-    return this.incoming.get(name) ?? new Set();
+    return this.incoming.get(name) ?? Graph.EMPTY_SET;
   }
 
   hasNode(name: string): boolean {
@@ -56,8 +64,9 @@ export class Graph {
       }
     });
 
-    this.outgoing.forEach((tos, from) => {
-      if (nodeNames.has(from)) {
+    nodeNames.forEach(from => {
+      const tos = this.outgoing.get(from);
+      if (tos) {
         tos.forEach(to => {
           if (nodeNames.has(to)) {
             edges.push({ from, to });

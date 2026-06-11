@@ -21,9 +21,7 @@ export class GraphTraversal {
       }
     });
 
-    const processQueue = () => {
-      if (queue.length === 0) return;
-
+    while (queue.length > 0) {
       const current = queue.shift()!;
 
       this.graph.getNeighbors(current).forEach(neighbor => {
@@ -33,11 +31,7 @@ export class GraphTraversal {
           queue.push(neighbor);
         }
       });
-
-      processQueue();
-    };
-
-    processQueue();
+    }
 
     return { visited, order };
   }
@@ -55,9 +49,7 @@ export class GraphTraversal {
       }
     });
 
-    const processQueue = () => {
-      if (queue.length === 0) return;
-
+    while (queue.length > 0) {
       const current = queue.shift()!;
 
       this.graph.getParents(current).forEach(parent => {
@@ -67,11 +59,7 @@ export class GraphTraversal {
           queue.push(parent);
         }
       });
-
-      processQueue();
-    };
-
-    processQueue();
+    }
 
     return { visited, order };
   }
@@ -79,21 +67,30 @@ export class GraphTraversal {
   dfs(startNodes: Set<string>): TraversalResult {
     const visited = new Set<string>();
     const order: string[] = [];
-
-    const dfsInner = (node: string) => {
-      if (visited.has(node)) return;
-
-      visited.add(node);
-      order.push(node);
-
-      this.graph.getNeighbors(node).forEach(neighbor => dfsInner(neighbor));
-    };
+    const stack: string[] = [];
 
     startNodes.forEach(node => {
       if (this.graph.hasNode(node)) {
-        dfsInner(node);
+        stack.push(node);
       }
     });
+
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (visited.has(current)) continue;
+
+      visited.add(current);
+      order.push(current);
+
+      const neighbors = this.graph.getNeighbors(current);
+      const neighborArray = [...neighbors];
+      for (let i = neighborArray.length - 1; i >= 0; i--) {
+        const neighbor = neighborArray[i];
+        if (!visited.has(neighbor)) {
+          stack.push(neighbor);
+        }
+      }
+    }
 
     return { visited, order };
   }

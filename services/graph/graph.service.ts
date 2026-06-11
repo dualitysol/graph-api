@@ -29,7 +29,7 @@ export class GraphService {
     if (filterTypes.length === 0) {
       return {
         nodes: this.graph.getNodes(),
-        edges: this.graph.subgraph(new Set(this.graph.getNodes().map(n => n.name))).edges,
+        edges: this.graph.getAllEdges(),
       };
     }
 
@@ -51,7 +51,7 @@ export class GraphService {
       } else {
         const subgraphGraph = new Graph(currentSubgraph.nodes, currentSubgraph.edges);
         const subgraphTraversal = new GraphTraversal(subgraphGraph);
-        currentSubgraph = filter.apply(subgraphTraversal, subgraphGraph, this.index);
+        currentSubgraph = filter.apply(subgraphTraversal, subgraphGraph, this.index, subgraphGraph);
       }
     });
 

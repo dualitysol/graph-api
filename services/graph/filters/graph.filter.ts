@@ -99,3 +99,4 @@ export function getFilterRegistry(): Map<string, () => BaseGraphFilter> {
 export function getAvailableFilters(): string[] {
   return [...filterRegistry.keys()];
 }
+

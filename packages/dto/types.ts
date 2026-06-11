@@ -1,12 +1,6 @@
-// Common DTO and type definitions shared across the application
-
 export interface FilterRequest {
   type: string;
   [key: string]: any;
-}
-
-export interface QueryRequest {
-  filters?: FilterRequest[];
 }
 
 export interface ApiResponse {
