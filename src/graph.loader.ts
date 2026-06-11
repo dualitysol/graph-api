@@ -19,6 +19,11 @@ export class GraphLoader {
     return GraphLoader.instance;
   }
 
+  /** Reset the singleton (for testing purposes). */
+  public static resetInstance(): void {
+    GraphLoader.instance = null;
+  }
+
   public loadGraph(filePath: string): RawGraph {
     if (this.graph) {
       return this.graph;
