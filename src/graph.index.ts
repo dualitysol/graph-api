@@ -1,5 +1,5 @@
 import { GraphNode } from './types';
-import { getFilterRegistry } from './filters/graph.filter';
+import { getFilterRegistry } from './graph.filter';
 
 export class GraphIndex {
   private indexes = new Map<string, Set<string>>();

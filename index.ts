@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { App } from './packages/app';
-import { GraphLoader } from './services/graph/graph.loader';
-import { GraphController } from './services/graph/graph.controller';
+import { GraphLoader } from './src/graph.loader';
+import { GraphController } from './src/graph.controller';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const GRAPH_FILE = process.env.GRAPH_FILE || './assets/graphs.json';

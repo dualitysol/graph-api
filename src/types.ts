@@ -44,3 +44,9 @@ export interface GraphApiResponse {
   timestamp?: number;
   cached?: boolean;
 }
+
+export const FILTERS = {
+  PUBLIC_EXPOSED: 'publicExposed',
+  SINK: 'sink',
+  VULNERABILITY: 'vulnerability',
+} as const;

@@ -1,7 +1,7 @@
 import { Graph } from './graph.entity';
 import { GraphTraversal } from './graph.traversal';
 import { GraphIndex } from './graph.index';
-import { createFilter } from './filters/graph.filter';
+import { createFilter } from './graph.filter';
 import { GraphLoader } from './graph.loader';
 import { GraphNode, NormalizedEdge } from './types';
 

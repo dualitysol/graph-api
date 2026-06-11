@@ -1,7 +1,7 @@
-import { Graph } from '../graph.entity';
-import { GraphTraversal, TraversalResult } from '../graph.traversal';
-import { GraphIndex } from '../graph.index';
-import { GraphNode, NormalizedEdge } from '../types';
+import { Graph } from './graph.entity';
+import { GraphTraversal, TraversalResult } from './graph.traversal';
+import { GraphIndex } from './graph.index';
+import { GraphNode, NormalizedEdge } from './types';
 import { FILTERS } from './types';
 
 interface TraversalStrategy {
