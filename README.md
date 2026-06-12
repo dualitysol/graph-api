@@ -121,4 +121,80 @@ curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\",\"vulnerab
 - If `filters` is omitted or empty, the whole graph is returned.
 - The order of filters in the array matters only in `chain` mode (applied left to right). In `intersect` mode order does not matter.
 - Invalid filter names (e.g., `"unknown"`) will cause a `400 Bad Request` error with a descriptive message.
-- The response format is a JSON object containing `nodes` and `edges` arrays.
+- The response format is a **nested graph structure** — see section 5 below for details.
+
+## 5. Response format — nested graph structure for visualisation
+
+All responses from the API use a **nested (layered) format** designed for straightforward graph rendering on the client side.
+
+Instead of returning a flat `{ nodes, edges }` pair that the frontend must process to compute positions, the API returns a pre‑computed layered structure:
+
+```json
+{
+  "levels": [
+    {
+      "level": 0,
+      "nodes": {
+        "frontend": {
+          "name": "frontend",
+          "kind": "service",
+          "language": "javascript",
+          "publicExposed": true,
+          "neighbors": ["api-gateway", "auth-service"],
+          "children": ["api-gateway", "auth-service"]
+        }
+      }
+    },
+    {
+      "level": 1,
+      "nodes": {
+        "api-gateway": {
+          "name": "api-gateway",
+          "kind": "service",
+          "neighbors": ["order-service", "ts-ui-service"],
+          "children": ["order-service", "ts-ui-service"]
+        },
+        "auth-service": {
+          "name": "auth-service",
+          "kind": "service",
+          "neighbors": ["ts-ui-service"],
+          "children": []
+        }
+      }
+    }
+  ]
+}
+```
+
+Every node in the response carries:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Service name (unique identifier) |
+| `kind` | string | Node type: `service`, `rds`, `sqs`, etc. |
+| `language` | string? | Programming language, if present |
+| `publicExposed` | boolean? | Whether the service is publicly accessible |
+| `vulnerabilities` | array? | List of vulnerability objects (`file`, `severity`, `message`) |
+| `neighbors` | string[] | All immediate outgoing neighbours from this node (within the filtered subgraph) |
+| `children` | string[] | Subset of neighbours that are strictly deeper in the BFS level — useful for tree‑style rendering where edges should not go backwards |
+
+### 5.1. How levels are computed — BFS from root nodes
+
+The ordering algorithm (`buildNestedGraph` in `src/graph.helpers.ts`) works in three steps:
+
+1. **Find root nodes** — any node in the subgraph that has no incoming edges from other nodes in the same subgraph. If the subgraph is empty or contains only cycles, all nodes are placed at level 0.
+
+2. **BFS traversal** — starting from the roots, each node is assigned `level = 1 + level(of parent)`. If a node can be reached via multiple paths, the *deepest* level is kept (longest‑path BFS). This ensures that nodes reachable only through a chain are pushed down the visual hierarchy.
+
+3. **Populate `children`** — for each node, `children` is the subset of `neighbors` whose assigned level is strictly greater than the node's own level. This gives the frontend a ready‑to‑use parent‑child list for drawing directed edges top‑to‑bottom without needing to compute topological order on the client.
+
+### 5.2. Motivation for the nested format
+
+The original `{ nodes, edges }` format is convenient for backend processing but shifts the layout burden to the frontend:
+
+- **No layout algorithm required** — the client can simply iterate `response.levels` in order, drawing each level as a row from top to bottom, and connect parent nodes to their `children`. No BFS, no topological sort, no cycle detection on the client side.
+- **Self‑contained nodes** — each node knows its neighbours and children, so the frontend can render the complete graph by iterating the `Record` of nodes; no separate edge‑matching pass is needed.
+- **Cleaner handle on reverse edges** — `children` only includes edges that go forward in the hierarchy; a UI that draws directed edges can safely ignore backwards or same‑level connections without extra filtering.
+- **Performance** — the BFS and edge indexing are done once on the server (in `buildNestedGraph()`), so a slow client (e.g., a mobile web view) receives a structure it can render immediately with a single `Array.map` pass.
+
+If a flat `{ nodes, edges }` response is still needed for debugging or custom processing, it is trivial to derive it from the nested format by flattening `levels`.

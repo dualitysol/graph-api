@@ -3,7 +3,7 @@ import { GraphTraversal } from './graph.traversal';
 import { GraphIndex } from './graph.index';
 import { createFilter } from './graph.filter';
 import { GraphNode, NormalizedEdge } from './types';
-import { indexEdges } from './graph.helpers';
+import { indexEdges, NestedGraph, buildNestedGraph } from './graph.helpers';
 
 export type QueryMode = 'chain' | 'intersect';
 
@@ -22,19 +22,24 @@ export class GraphService {
   queryGraph(
     filterTypes: string[] = [],
     mode: QueryMode = 'chain'
-  ): { nodes: GraphNode[]; edges: NormalizedEdge[] } {
+  ): NestedGraph {
+    let nodes: GraphNode[];
+    let edges: NormalizedEdge[];
+
     if (filterTypes.length === 0) {
-      return {
-        nodes: this.graph.getNodes(),
-        edges: this.graph.getAllEdges(),
-      };
+      nodes = this.graph.getNodes();
+      edges = this.graph.getAllEdges();
+    } else if (mode === 'chain') {
+      const result = this.applyChain(filterTypes);
+      nodes = result.nodes;
+      edges = result.edges;
+    } else {
+      const result = this.applyIntersect(filterTypes);
+      nodes = result.nodes;
+      edges = result.edges;
     }
 
-    if (mode === 'chain') {
-      return this.applyChain(filterTypes);
-    }
-
-    return this.applyIntersect(filterTypes);
+    return buildNestedGraph(nodes, edges);
   }
 
   private applyChain(filterTypes: string[]): { nodes: GraphNode[]; edges: NormalizedEdge[] } {
@@ -81,3 +86,4 @@ export class GraphService {
     return result!;
   }
 }
+

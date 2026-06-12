@@ -1,22 +1,13 @@
-import { NormalizedEdge } from "./types";
+import { GraphNode, NormalizedEdge } from "./types";
 
 /**
- * Builds a Map from each source node to the Set of its target nodes.
- * Enables O(1) edge-existence checks by source + target without string concatenation.
- *
- * @param edges - Array of normalized edges
- * @returns Map where key = source node, value = Set of target nodes
- *
- * @example
- * const idx = indexEdges([{ from: 'A', to: 'B' }, { from: 'A', to: 'C' }]);
- * idx.get('A') // Set { 'B', 'C' }
+ * Index edges as Map<from, Set<to>> for O(1) lookups.
  */
 export function indexEdges(edges: NormalizedEdge[]): Map<string, Set<string>> {
   const index = new Map<string, Set<string>>();
 
   for (const { from, to } of edges) {
     const targets = index.get(from);
-
     if (targets) {
       targets.add(to);
     } else {
@@ -28,25 +19,144 @@ export function indexEdges(edges: NormalizedEdge[]): Map<string, Set<string>> {
 }
 
 /**
- * Adds a value to a Set inside a Map, creating the Set if the key is missing.
- * Eliminates the repetitive has-check-then-get pattern.
- *
- * @param map - The Map to mutate
- * @param key - Key whose Set should receive the value
- * @param value - Value to add to the Set
- *
- * @example
- * const map = new Map<string, Set<string>>();
- * addToMapSet(map, 'A', 'B'); // { 'A' => Set { 'B' } }
- * addToMapSet(map, 'A', 'C'); // { 'A' => Set { 'B', 'C' } }
+ * Adds a value to a Set inside a Map, creating the Set if missing.
  */
 export function addToMapSet<K, V>(map: Map<K, Set<V>>, key: K, value: V): void {
   let set = map.get(key);
-
   if (!set) {
     set = new Set();
     map.set(key, set);
   }
-
   set.add(value);
+}
+
+/**
+ * Nested graph node — each node knows its neighbours and children.
+ */
+export interface NestedGraphNode {
+  name: string;
+  kind: string;
+  language?: string;
+  publicExposed?: boolean;
+  vulnerabilities?: { file: string; severity: string; message: string }[];
+  neighbors: string[];
+  children: string[];
+}
+
+export interface NestedGraphLevel {
+  level: number;
+  nodes: Record<string, NestedGraphNode>;
+}
+
+export interface NestedGraph {
+  levels: NestedGraphLevel[];
+}
+
+/**
+ * Builds a nested (layered) graph from a flat node/edge result.
+ * Arranges nodes into BFS levels so frontend can render top-to-bottom.
+ *
+ * @param nodes - Flat array of graph nodes
+ * @param edges - Flat array of normalized edges
+ * @returns NestedGraph with levels
+ */
+export function buildNestedGraph(
+  nodes: GraphNode[],
+  edges: NormalizedEdge[]
+): NestedGraph {
+  // Index edges for fast lookup
+  const edgeIndex = indexEdges(edges);
+
+  // Reverse index: who points to whom
+  const reverseIndex = new Map<string, Set<string>>();
+  for (const { from, to } of edges) {
+    addToMapSet(reverseIndex, to, from);
+  }
+
+  // Build node map for quick access
+  const nodeMap = new Map<string, GraphNode>();
+  for (const node of nodes) {
+    nodeMap.set(node.name, node);
+  }
+
+  // Find roots: nodes with no incoming edges within this subgraph
+  const allInSubgraph = new Set(nodes.map(n => n.name));
+  const roots = nodes
+    .map(n => n.name)
+    .filter(name => {
+      const parents = reverseIndex.get(name);
+      return !parents || [...parents].every(p => !allInSubgraph.has(p));
+    });
+
+  // BFS to assign levels
+  const levelMap = new Map<string, number>();
+  const queue: string[] = [];
+
+  for (const root of roots) {
+    levelMap.set(root, 0);
+    queue.push(root);
+  }
+
+  // If no roots found (e.g. cycles), put all at level 0
+  if (roots.length === 0 && nodes.length > 0) {
+    for (const node of nodes) {
+      levelMap.set(node.name, 0);
+      queue.push(node.name);
+    }
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const currentLevel = levelMap.get(current) ?? 0;
+    const neighbors = edgeIndex.get(current);
+
+    if (neighbors) {
+      for (const neighbor of neighbors) {
+        if (!allInSubgraph.has(neighbor)) continue;
+        const existingLevel = levelMap.get(neighbor);
+        // Only assign if not visited, or if we found a longer path (deeper)
+        if (existingLevel === undefined || currentLevel + 1 > existingLevel) {
+          levelMap.set(neighbor, currentLevel + 1);
+          queue.push(neighbor);
+        }
+      }
+    }
+  }
+
+  // Build level groups
+  const levelGroups = new Map<number, Record<string, NestedGraphNode>>();
+
+  for (const [name, level] of levelMap) {
+    if (!levelGroups.has(level)) {
+      levelGroups.set(level, {});
+    }
+
+    const node = nodeMap.get(name)!;
+    const neighbors = [...(edgeIndex.get(name) ?? [])].filter(n => allInSubgraph.has(n));
+    const children = neighbors.filter(n => (levelMap.get(n) ?? 0) > level);
+
+    const nestedNode: NestedGraphNode = {
+      name: node.name,
+      kind: node.kind,
+      language: node.language,
+      publicExposed: node.publicExposed,
+      vulnerabilities: node.vulnerabilities?.map(v => ({
+        file: v.file,
+        severity: v.severity,
+        message: v.message,
+      })),
+      neighbors,
+      children,
+    };
+
+    levelGroups.get(level)![name] = nestedNode;
+  }
+
+  const levels: NestedGraphLevel[] = [];
+  const sortedLevels = [...levelGroups.keys()].sort((a, b) => a - b);
+  for (const level of sortedLevels) {
+    levels.push({ level, nodes: levelGroups.get(level)! });
+  }
+
+  return { levels };
 }

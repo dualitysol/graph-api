@@ -1,10 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
 import { Graph } from '../src/graph.entity';
 import { GraphService } from '../src/graph.service';
+import { NestedGraph } from '../src/graph.helpers';
 import { GraphNode, NormalizedEdge } from '../src/types';
 
 const testNodes: GraphNode[] = [
@@ -26,6 +24,18 @@ const testEdges: NormalizedEdge[] = [
     { from: 'order-service', to: 'queue' },
     { from: 'frontend', to: 'cache' },
 ];
+
+/** Collect all node names from a nested graph. */
+function getAllNames(result: NestedGraph): string[] {
+  const names: string[] = [];
+  for (const level of result.levels) {
+    for (const name of Object.keys(level.nodes)) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
 const setupService = (): GraphService => {
   const graph = new Graph(testNodes, testEdges);
   return new GraphService(graph);
@@ -35,37 +45,40 @@ describe('GraphService', () => {
   it('should return full graph without filters', () => {
     const svc = setupService();
     const result = svc.queryGraph();
-    assert.equal(result.nodes.length, 7);
-    assert.equal(result.edges.length, 7);
+    const names = getAllNames(result);
+    assert.equal(names.length, 7);
   });
 
   describe('chain mode', () => {
     it('should chain two filters: publicExposed then sink', () => {
       const svc = setupService();
       const result = svc.queryGraph(['publicExposed', 'sink'], 'chain');
-      assert.ok(result.nodes.some(n => n.name === 'frontend'));
-      assert.ok(result.nodes.some(n => n.name === 'api-gateway'));
-      assert.ok(result.nodes.some(n => n.name === 'auth-service'));
-      assert.ok(result.nodes.some(n => n.name === 'order-service'));
-      assert.ok(result.nodes.some(n => n.name === 'db'));
-      assert.ok(result.nodes.some(n => n.name === 'queue'));
-      assert.equal(result.nodes.some(n => n.name === 'cache'), false);
+      const names = getAllNames(result);
+      assert.ok(names.includes('frontend'));
+      assert.ok(names.includes('api-gateway'));
+      assert.ok(names.includes('auth-service'));
+      assert.ok(names.includes('order-service'));
+      assert.ok(names.includes('db'));
+      assert.ok(names.includes('queue'));
+      assert.equal(names.includes('cache'), false);
     });
 
     it('should chain publicExposed then vulnerability', () => {
       const svc = setupService();
       const result = svc.queryGraph(['publicExposed', 'vulnerability'], 'chain');
-      assert.equal(result.nodes.some(n => n.name === 'auth-service'), true);
-      assert.equal(result.nodes.some(n => n.name === 'db'), true);
-      assert.equal(result.nodes.some(n => n.name === 'frontend'), false);
-      assert.equal(result.nodes.some(n => n.name === 'api-gateway'), false);
+      const names = getAllNames(result);
+      assert.equal(names.includes('auth-service'), true);
+      assert.equal(names.includes('db'), true);
+      assert.equal(names.includes('frontend'), false);
+      assert.equal(names.includes('api-gateway'), false);
     });
 
     it('should handle single filter', () => {
       const svc = setupService();
       const result = svc.queryGraph(['sink'], 'chain');
-      assert.ok(result.nodes.some(n => n.name === 'db'));
-      assert.ok(result.nodes.some(n => n.name === 'queue'));
+      const names = getAllNames(result);
+      assert.ok(names.includes('db'));
+      assert.ok(names.includes('queue'));
     });
   });
 
@@ -73,10 +86,10 @@ describe('GraphService', () => {
     it('should intersect publicExposed and sink', () => {
       const svc = setupService();
       const result = svc.queryGraph(['publicExposed', 'sink'], 'intersect');
-      assert.ok(result.nodes.length > 0);
-      assert.ok(result.nodes.some(n => n.name === 'frontend'));
-      assert.ok(result.nodes.some(n => n.name === 'db'));
+      const names = getAllNames(result);
+      assert.ok(names.length > 0);
+      assert.ok(names.includes('frontend'));
+      assert.ok(names.includes('db'));
     });
   });
 });
-
