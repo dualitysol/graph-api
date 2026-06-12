@@ -3,6 +3,7 @@ import { GraphTraversal, TraversalResult } from './graph.traversal';
 import { GraphIndex } from './graph.index';
 import { GraphNode, NormalizedEdge } from './types';
 import { FILTERS } from './types';
+import { BadRequestError } from '../packages/errors';
 
 interface TraversalStrategy {
   traverse(traversal: GraphTraversal, startNodes: Set<string>): TraversalResult;
@@ -23,7 +24,7 @@ export abstract class BaseGraphFilter {
     traversal: GraphTraversal,
     graph: Graph,
     index: GraphIndex,
-    subgraph?: Graph
+    subgraph?: Graph,
   ): { nodes: GraphNode[]; edges: NormalizedEdge[] } {
     const startNodes = index.get(this.name);
 
@@ -89,7 +90,7 @@ export function createFilter(filterType: string): BaseGraphFilter {
   const factory = filterRegistry.get(filterType);
 
   if (!factory) {
-    throw new Error(`Unknown filter type: ${filterType}`);
+    throw new BadRequestError(`Unknown filter type: ${filterType}`);
   }
 
   return factory();
@@ -102,4 +103,3 @@ export function getFilterRegistry(): Map<string, () => BaseGraphFilter> {
 export function getAvailableFilters(): string[] {
   return [...filterRegistry.keys()];
 }
-

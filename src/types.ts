@@ -3,7 +3,7 @@ export interface Metadata {
   cloud?: string;
   engine?: string;
   version?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface Vulnerability {
@@ -36,13 +36,6 @@ export interface RawGraph {
 export interface NormalizedEdge {
   from: string;
   to: string;
-}
-
-export interface GraphApiResponse {
-  nodes: GraphNode[];
-  edges: NormalizedEdge[];
-  timestamp?: number;
-  cached?: boolean;
 }
 
 export const FILTERS = {

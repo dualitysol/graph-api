@@ -1,42 +1,65 @@
 import 'reflect-metadata';
 import http from 'http';
-import url from 'url';
 import { isApiError } from './errors';
 
 const PATH_METADATA = 'path';
 const METHOD_METADATA = 'method';
 const BUFFER_SIZE = 1024 * 1024; // 1MB max payload
 
+export class Controller {
+  [key: string]: RouteHandler | unknown;
+}
+
+export interface TypedRequest {
+  query: Record<string, string | string[] | undefined>;
+  bodyBuffer?: Buffer;
+}
+
+type RouteHandler = (req: TypedRequest) => unknown;
+
 export const Route = (method: string, path: string) => {
-  return (target: any, propertyKey: string) => {
+  return (target: Controller, propertyKey: string) => {
     Reflect.defineMetadata(PATH_METADATA, path, target, propertyKey);
     Reflect.defineMetadata(METHOD_METADATA, method, target, propertyKey);
   };
 };
 
 export class App {
-  private controllers: any[] = [];
-  private routeMap = new Map<string, Function>();
+  private routeMap = new Map<string, RouteHandler>();
 
-  public registerController(controller: any) {
-    this.controllers.push(controller);
+  public registerController(controller: Controller): void {
     const proto = Object.getPrototypeOf(controller);
     const methods = Object.getOwnPropertyNames(proto);
 
     for (const methodName of methods) {
-      const path = Reflect.getMetadata(PATH_METADATA, controller, methodName);
-      const method = Reflect.getMetadata(METHOD_METADATA, controller, methodName);
+      const path: string | undefined = Reflect.getMetadata(PATH_METADATA, controller, methodName);
+      const method: string | undefined = Reflect.getMetadata(METHOD_METADATA, controller, methodName);
 
       if (path && method) {
-        this.routeMap.set(`${method}:${path}`, controller[methodName].bind(controller));
+        const handler = controller[methodName] as unknown as RouteHandler;
+        this.routeMap.set(`${method}:${path}`, handler.bind(controller));
       }
     }
   }
 
-  public listen(port: number) {
-    http
+  public listen(port: number): http.Server {
+    const server = http
       .createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
-        const parsedUrl = url.parse(req.url || '', true);
+        const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+        const pathname = urlObj.pathname;
+
+        // Parse query params into Record
+        const query: Record<string, string | string[] | undefined> = {};
+        for (const [key, value] of urlObj.searchParams.entries()) {
+          const existing = query[key];
+          if (existing === undefined) {
+            query[key] = value;
+          } else if (Array.isArray(existing)) {
+            existing.push(value);
+          } else {
+            query[key] = [existing, value];
+          }
+        }
 
         // CORS headers
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -51,17 +74,19 @@ export class App {
           return;
         }
 
+        const extReq = req as unknown as TypedRequest;
+
         // Parse body for POST/PUT requests with zero-copy buffer handling
         if (req.method === 'POST' || req.method === 'PUT') {
           try {
-            const bodyBuffer = await this.parseBodyBuffer(req);
-            (req as any).bodyBuffer = bodyBuffer;
-          } catch (error: any) {
+            extReq.bodyBuffer = await this.parseBodyBuffer(req);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Invalid request body';
             res.writeHead(400);
             res.end(
               JSON.stringify({
                 error: 'BadRequest',
-                message: error.message || 'Invalid request body',
+                message,
                 timestamp: Date.now(),
               }),
             );
@@ -70,27 +95,28 @@ export class App {
         }
 
         // Attach parsed query to request
-        (req as any).query = parsedUrl.query;
+        extReq.query = query;
 
         // Find and execute handler
-        const routeKey = `${req.method}:${parsedUrl.pathname}`;
+        const routeKey = `${req.method}:${pathname}`;
         const handler = this.routeMap.get(routeKey);
 
         if (handler) {
           try {
-            const result = await handler(req);
+            const result = await handler(extReq);
             res.writeHead(200);
             res.end(JSON.stringify(result));
-          } catch (error: any) {
-            if (isApiError(error)) {
-              res.writeHead(error.statusCode);
-              res.end(JSON.stringify(error.toJSON()));
+          } catch (err: unknown) {
+            if (isApiError(err)) {
+              res.writeHead(err.statusCode);
+              res.end(JSON.stringify(err.toJSON()));
             } else {
+              const message = err instanceof Error ? err.message : 'Unknown error';
               res.writeHead(500);
               res.end(
                 JSON.stringify({
                   error: 'InternalServerError',
-                  message: error?.message || 'Unknown error',
+                  message,
                   timestamp: Date.now(),
                 }),
               );
@@ -101,13 +127,15 @@ export class App {
           res.end(
             JSON.stringify({
               error: 'NotFound',
-              message: `No handler for ${req.method} ${parsedUrl.pathname}`,
+              message: `No handler for ${req.method} ${pathname}`,
               timestamp: Date.now(),
             }),
           );
         }
       })
       .listen(port);
+
+    return server;
   }
 
   private parseBodyBuffer(req: http.IncomingMessage): Promise<Buffer> {
@@ -126,7 +154,8 @@ export class App {
 
       req.on('end', () => {
         try {
-          const merged = chunks.length === 0 ? Buffer.alloc(0) : chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, size);
+          const merged =
+            chunks.length === 0 ? Buffer.alloc(0) : chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, size);
           resolve(merged);
         } catch (err) {
           reject(err);

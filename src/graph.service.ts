@@ -3,9 +3,8 @@ import { GraphTraversal } from './graph.traversal';
 import { GraphIndex } from './graph.index';
 import { createFilter } from './graph.filter';
 import { GraphNode, NormalizedEdge } from './types';
-import { indexEdges, NestedGraph, buildNestedGraph } from './graph.helpers';
-
-export type QueryMode = 'chain' | 'intersect';
+import { indexEdges, buildNestedGraph } from './graph.helpers';
+import { GraphQueryResponse, QueryMode } from '../packages/dto/types';
 
 export class GraphService {
   private graph: Graph;
@@ -19,10 +18,7 @@ export class GraphService {
     this.index.build(graph.getNodes());
   }
 
-  queryGraph(
-    filterTypes: string[] = [],
-    mode: QueryMode = 'chain'
-  ): NestedGraph {
+  queryGraph(filterTypes: string[] = [], mode: QueryMode = 'chain'): GraphQueryResponse {
     let nodes: GraphNode[];
     let edges: NormalizedEdge[];
 
@@ -39,7 +35,14 @@ export class GraphService {
       edges = result.edges;
     }
 
-    return buildNestedGraph(nodes, edges);
+    const nested = buildNestedGraph(nodes, edges);
+    return {
+      levels: nested.levels,
+      meta: {
+        filters: filterTypes,
+        mode,
+      },
+    };
   }
 
   private applyChain(filterTypes: string[]): { nodes: GraphNode[]; edges: NormalizedEdge[] } {
@@ -53,6 +56,8 @@ export class GraphService {
       } else {
         const subgraphGraph = new Graph(currentSubgraph.nodes, currentSubgraph.edges);
         const subgraphTraversal = new GraphTraversal(subgraphGraph);
+        // Index is not needed here — filter.apply() uses subgraph to filter startNodes
+        // from the original index via subgraph.hasNode() internally
         currentSubgraph = filter.apply(subgraphTraversal, subgraphGraph, this.index, subgraphGraph);
       }
     });
@@ -86,4 +91,3 @@ export class GraphService {
     return result!;
   }
 }
-

@@ -1,4 +1,5 @@
-import { GraphNode, NormalizedEdge } from "./types";
+import { GraphNode, NormalizedEdge } from './types';
+import { NestedGraphNode, NestedGraph, NestedGraphLevel } from '../packages/dto/types';
 
 /**
  * Index edges as Map<from, Set<to>> for O(1) lookups.
@@ -31,28 +32,6 @@ export function addToMapSet<K, V>(map: Map<K, Set<V>>, key: K, value: V): void {
 }
 
 /**
- * Nested graph node — each node knows its neighbours and children.
- */
-export interface NestedGraphNode {
-  name: string;
-  kind: string;
-  language?: string;
-  publicExposed?: boolean;
-  vulnerabilities?: { file: string; severity: string; message: string }[];
-  neighbors: string[];
-  children: string[];
-}
-
-export interface NestedGraphLevel {
-  level: number;
-  nodes: Record<string, NestedGraphNode>;
-}
-
-export interface NestedGraph {
-  levels: NestedGraphLevel[];
-}
-
-/**
  * Builds a nested (layered) graph from a flat node/edge result.
  * Arranges nodes into BFS levels so frontend can render top-to-bottom.
  *
@@ -60,10 +39,7 @@ export interface NestedGraph {
  * @param edges - Flat array of normalized edges
  * @returns NestedGraph with levels
  */
-export function buildNestedGraph(
-  nodes: GraphNode[],
-  edges: NormalizedEdge[]
-): NestedGraph {
+export function buildNestedGraph(nodes: GraphNode[], edges: NormalizedEdge[]): NestedGraph {
   // Index edges for fast lookup
   const edgeIndex = indexEdges(edges);
 
@@ -73,21 +49,33 @@ export function buildNestedGraph(
     addToMapSet(reverseIndex, to, from);
   }
 
-  // Build node map for quick access
+  // Build node map and subgraph set in a single pass
   const nodeMap = new Map<string, GraphNode>();
+  const allInSubgraph = new Set<string>();
   for (const node of nodes) {
     nodeMap.set(node.name, node);
+    allInSubgraph.add(node.name);
   }
 
   // Find roots: nodes with no incoming edges within this subgraph
-  const allInSubgraph = new Set(nodes.map(n => n.name));
-  const roots = nodes
-    .map(n => n.name)
-    .filter(name => {
-      const parents = reverseIndex.get(name);
-      return !parents || [...parents].every(p => !allInSubgraph.has(p));
-    });
-
+  const roots: string[] = [];
+  for (const name of allInSubgraph) {
+    const parents = reverseIndex.get(name);
+    if (!parents) {
+      roots.push(name);
+    } else {
+      let hasParentInSubgraph = false;
+      for (const p of parents) {
+        if (allInSubgraph.has(p)) {
+          hasParentInSubgraph = true;
+          break;
+        }
+      }
+      if (!hasParentInSubgraph) {
+        roots.push(name);
+      }
+    }
+  }
   // BFS to assign levels
   const levelMap = new Map<string, number>();
   const queue: string[] = [];
@@ -98,24 +86,23 @@ export function buildNestedGraph(
   }
 
   // If no roots found (e.g. cycles), put all at level 0
-  if (roots.length === 0 && nodes.length > 0) {
-    for (const node of nodes) {
-      levelMap.set(node.name, 0);
-      queue.push(node.name);
+  if (roots.length === 0 && allInSubgraph.size > 0) {
+    for (const name of allInSubgraph) {
+      levelMap.set(name, 0);
+      queue.push(name);
     }
   }
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  let head = 0;
+  while (head < queue.length) {
+    const current = queue[head++];
     const currentLevel = levelMap.get(current) ?? 0;
     const neighbors = edgeIndex.get(current);
 
     if (neighbors) {
       for (const neighbor of neighbors) {
         if (!allInSubgraph.has(neighbor)) continue;
-        const existingLevel = levelMap.get(neighbor);
-        // Only assign if not visited, or if we found a longer path (deeper)
-        if (existingLevel === undefined || currentLevel + 1 > existingLevel) {
+        if (!levelMap.has(neighbor)) {
           levelMap.set(neighbor, currentLevel + 1);
           queue.push(neighbor);
         }
@@ -144,6 +131,7 @@ export function buildNestedGraph(
         file: v.file,
         severity: v.severity,
         message: v.message,
+        metadata: v.metadata,
       })),
       neighbors,
       children,

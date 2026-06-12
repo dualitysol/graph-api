@@ -1,133 +1,107 @@
-# Graph API – Backslash Test Task Solution
+# Graph API
 
-## 1. Overview
+Query a microservice dependency graph. Find which services are reachable from public endpoints, lead to a database, or contain vulnerabilities.
 
-I implemented a REST API that loads a microservice graph (from the Train Ticket JSON dataset) and filters routes by three criteria:
+Built with TypeScript, zero external HTTP dependencies, BFS-based traversal.
 
-- `publicExposed` – nodes with `publicExposed: true`
-- `sink` – nodes of type `rds` or `sqs`
-- `vulnerability` – nodes that have a non‑empty `vulnerabilities` array
+---
 
-The API supports two ways of combining filters:
+## How it works: graph traversal & filter logic
 
-- `chain` – sequential application (each filter works on the result of the previous one)
-- `intersect` – intersection of results from applying all filters independently to the original graph
+### Filters ask one question each
 
-The code is written in TypeScript.
+Every filter asks a reachability question. The answer is always a subgraph — the set of all nodes and edges that form valid routes.
 
-## 2. Key technical decisions and reasoning
+| Filter          | Question                                                                        | Strategy                                                       |
+| --------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `publicExposed` | Start from any public-facing service. Where can it reach?                       | **Forward BFS** from matching nodes                            |
+| `sink`          | Start from every database or queue. Which services lead there?                  | **Reverse BFS** — follow incoming edges backwards from RDS/SQS |
+| `vulnerability` | Start from any service with a known vulnerability. Where can an attacker pivot? | **Forward BFS** from matching nodes                            |
 
-### 2.1. Edge normalization
-In the source JSON, edges can be written as `"to": "single_node"` or `"to": ["node1", "node2"]`. I wrote a `normalizeEdges` function that always turns `to` into an array and generates separate `{ from, to }` objects. This removes the need to check the type of `to` everywhere else.
+Forward BFS answers "everything reachable from X". Reverse BFS answers "everything that can reach Y". The direction maps directly to the question — no need to invert the graph manually.
 
-### 2.2. Pre‑building indexes for filters
-Instead of scanning all nodes on every request and checking conditions, I build an index (`GraphIndex`) once when the graph is loaded. For each registered filter, `filter.matches(node)` is called, and matching node names are stored in a `Map<filterType, Set<string>>`. When a filter is applied, the starting nodes are taken from this index in O(1). This speeds up queries, especially for large graphs.
+### Two filter combination modes
 
-### 2.3. Graph traversal – BFS forward, BFS reverse, and why DFS is not used for filtering
+**Chain** — apply filters one after another. The first filter produces a subgraph, the second runs inside that subgraph, and so on. Useful for step-by-step refinement: "first take public services, then from those find routes that reach a sink."
 
-I implemented two breadth‑first search directions:
+**Intersect** — each filter runs independently on the full graph, then the node and edge sets are intersected. Useful for simultaneous constraints: "services that are both public-facing **and** lead to a vulnerable node."
 
-- **Forward BFS** – starts from a set of nodes and follows outgoing edges to all reachable nodes. This is used for filters like `publicExposed` and `vulnerability`, where the requirement is to find routes *starting* from those nodes (i.e., everything that can be reached from a public or vulnerable service).
-- **Reverse BFS** – starts from a set of nodes and follows incoming edges backwards. This is used for the `sink` filter, because the task asks for routes that *end* in a sink (RDS/SQS). Reverse BFS finds all nodes that can eventually reach a sink, which is exactly the set of services that have a path to the database or queue.
+### Pre-built filter index for O(1) start node lookup
 
-I chose **BFS over DFS** for the actual filtering because BFS guarantees that all reachable nodes are found, regardless of graph shape, and it does so without recursion. BFS also naturally finds the shortest path in terms of number of hops, though path length is not required. The iterative implementation (using a `while` loop and a queue) avoids stack overflow on deep graphs.
+Instead of scanning all nodes on every request, `GraphIndex` runs `filter.matches()` once at startup and caches matching node names per filter type. When a query comes in, the starting set is ready in O(1).
 
-The code also contains a `dfs` method, but **it is not used in the current filtering logic**. I included it as a general‑purpose traversal utility that may be useful for future extensions (for example, if someone needs to detect cycles or perform topological sorting). Keeping it does not affect performance because it is never called.
+### Level-based response for zero frontend layout work
 
-### 2.4. Two filter combination modes
-- **Chain:** The first filter produces a subgraph, the second filter is applied to that subgraph, and so on. This is natural for scenarios where you refine the route step by step (e.g., "first take all public services, then from those find routes that reach a sink").
-- **Intersect:** Each filter is applied to the original graph, then I intersect the resulting node sets and edge sets. This is convenient when you need routes that satisfy multiple conditions simultaneously (e.g., start at a public service **and** reach a vulnerable node). For edge intersection, I use a helper `indexEdges` that builds a `Map<from, Set<to>>` to quickly test whether an edge exists.
+The response is organised into BFS levels, not a flat node/edge dump. Roots are nodes with no incoming edges inside the subgraph; each subsequent level is one hop deeper. Every node carries a `children` field — a pre-computed subset of neighbours that are strictly deeper. A frontend can render the graph by iterating levels top-to-bottom without running any layout algorithm.
 
-### 2.5. Handling broken edges and isolated nodes
-When building the graph, I check whether `edge.from` and `edge.to` exist in the node set. If a node is missing, the edge is skipped and a warning is printed to the console. After processing all edges, nodes that have neither incoming nor outgoing edges are also logged. This prevents the server from crashing due to data errors (for example, the original `graphs.json` contains an edge to a missing `assurance-service` and several isolated nodes). The API continues to work and returns correct subgraphs.
+Cyclic subgraphs don't break the builder: levels are assigned on first visit only. Fully cyclic graphs fall back to level 0 for all nodes.
 
-### 2.6. Query caching
-Because the graph is static (loaded once at startup), identical requests always return the same result. I added a simple in‑memory cache with a 60‑second TTL and a maximum size of 1000 entries. The cache key is the serialized list of filters. This reduces repeated BFS and subgraph construction work.
+### Edge normalisation at load time
 
-### 2.7. Testing
-I wrote unit tests for all major components: `Graph`, `GraphTraversal`, `GraphIndex`, `GraphLoader`, `GraphService`, and the filters themselves. The tests use the built‑in `node:test` and `node:assert/strict`, so no extra dependencies are added. Both normal scenarios and edge cases are covered: missing nodes, empty start sets, cycles in the graph. This gives confidence that changes won’t break existing behaviour.
+Source edges use two formats — `"to": "single"` and `"to": ["a", "b"]`. Normalising to individual `{ from, to }` pairs once at load removes the type check everywhere else.
 
-## 3. Assumptions I made during development
+### Broken data tolerance
 
-- **Directed graph** – all edges have a direction because microservices call each other.
-- **`sink` filter** – I interpret it as nodes with `kind: "rds"` or `kind: "sqs"`. Other storage types (e.g., `elasticache`) are not included because the task explicitly said "rds/sql".
-- **Vulnerable nodes** – a node is considered vulnerable if its `vulnerabilities` array is non‑empty. Severity or other fields are not taken into account.
-- **`intersect` mode** – implemented as intersection of already computed subgraphs (nodes and edges). An alternative approach (intersecting start sets then running a single BFS) would be faster, but I chose this one for its simplicity and clarity.
-- **Synchronous graph loading** – the graph is loaded at startup using `fs.readFileSync`. This is fine for a static file; the server will wait a few milliseconds.
-- **DFS method is present but unused** – it does not affect performance or correctness; it is kept as a potential building block for future features like cycle detection.
+Edges referencing missing nodes are skipped with a warning. Isolated nodes are logged but not removed. The server never crashes on malformed input.
 
-## 4. How to add a new filter (extensibility)
+### Filters are extensible in three lines
 
-All filters are registered in `graph.filter.ts` inside the `filterRegistry`. To add a new filter:
+Add a new filter by implementing `matches(node)` and registering it — no other code changes:
 
-1. Create a class that extends `BaseGraphFilter`.
-2. Implement the `name` field (unique string identifier), the `strategy` field (`FORWARD_BFS` or `REVERSE_BFS`), and the `matches(node)` method.
-3. Register the filter using `registerFilter(NAME, () => new MyFilter())`.
+```typescript
+class MyFilter extends BaseGraphFilter {
+  name = 'myFilter';
+  strategy = STRATEGIES.FORWARD_BFS;
+  matches(node: GraphNode) {
+    /* your condition */
+  }
+}
+registerFilter('myFilter', () => new MyFilter());
+```
 
-The index and the application logic will automatically pick up the new filter. No other parts of the code need to be changed.
+---
 
-## API Query Format
+## API
 
-The API exposes a single endpoint `GET /graph` that accepts two query parameters:
+### `GET /graph`
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `filters` | JSON array of strings | `[]` (no filters) | List of filter types to apply. Valid values: `"publicExposed"`, `"sink"`, `"vulnerability"`. |
-| `mode` | string | `"chain"` | How to combine multiple filters: `"chain"` (sequential) or `"intersect"` (intersection). |
+| Parameter | Type                       | Default   | Description                     |
+| --------- | -------------------------- | --------- | ------------------------------- |
+| `filters` | `string[]` (JSON)          | `[]`      | Filter types to apply           |
+| `mode`    | `"chain"` \| `"intersect"` | `"chain"` | How to combine multiple filters |
 
-The `filters` parameter must be a **valid JSON array** passed as a query string.  
-Use `encodeURIComponent` or simply wrap the array in quotes in your `curl` command.
-
-### Examples
-
-#### 1. No filters – return the full graph
+#### Examples
 
 ```bash
+# Full graph
 curl "http://localhost:3000/graph"
-```
 
-#### 2. Single filter – public exposed services and everything reachable from them
-
-```bash
+# Public services and everything they reach
 curl "http://localhost:3000/graph?filters=[\"publicExposed\"]"
-```
 
-#### 3. Two filters in **chain** mode (default) – start from public exposed, then from that result find routes that end in a sink
+# Routes that end in a sink (RDS / SQS)
+curl "http://localhost:3000/graph?filters=[\"sink\"]"
 
-```bash
+# From public services, find routes that lead to a sink
 curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\"]"
-```
 
-#### 4. Two filters in **intersect** mode – routes that both start from a public exposed service **and** end in a sink
-
-```bash
+# Same, but intersect the two sets instead of chaining
 curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\"]&mode=intersect"
-```
 
-#### 5. Vulnerability filter – find all routes reachable from any service that has a vulnerability
-
-```bash
+# Vulnerable services and everything they reach
 curl "http://localhost:3000/graph?filters=[\"vulnerability\"]"
 ```
 
-#### 6. All three filters together in chain mode
+#### Errors
 
-```bash
-curl "http://localhost:3000/graph?filters=[\"publicExposed\",\"sink\",\"vulnerability\"]&mode=chain"
-```
+| Condition                                | Status |
+| ---------------------------------------- | ------ |
+| Unknown filter name                      | `400`  |
+| Invalid `mode` value                     | `400`  |
+| `filters` is not a JSON array of strings | `400`  |
+| Unregistered route                       | `404`  |
 
-### Notes
-
-- If `filters` is omitted or empty, the whole graph is returned.
-- The order of filters in the array matters only in `chain` mode (applied left to right). In `intersect` mode order does not matter.
-- Invalid filter names (e.g., `"unknown"`) will cause a `400 Bad Request` error with a descriptive message.
-- The response format is a **nested graph structure** — see section 5 below for details.
-
-## 5. Response format — nested graph structure for visualisation
-
-All responses from the API use a **nested (layered) format** designed for straightforward graph rendering on the client side.
-
-Instead of returning a flat `{ nodes, edges }` pair that the frontend must process to compute positions, the API returns a pre‑computed layered structure:
+### Response format
 
 ```json
 {
@@ -138,63 +112,74 @@ Instead of returning a flat `{ nodes, edges }` pair that the frontend must proce
         "frontend": {
           "name": "frontend",
           "kind": "service",
-          "language": "javascript",
+          "language": "java",
           "publicExposed": true,
-          "neighbors": ["api-gateway", "auth-service"],
-          "children": ["api-gateway", "auth-service"]
-        }
-      }
-    },
-    {
-      "level": 1,
-      "nodes": {
-        "api-gateway": {
-          "name": "api-gateway",
-          "kind": "service",
-          "neighbors": ["order-service", "ts-ui-service"],
-          "children": ["order-service", "ts-ui-service"]
-        },
-        "auth-service": {
-          "name": "auth-service",
-          "kind": "service",
-          "neighbors": ["ts-ui-service"],
-          "children": []
+          "neighbors": ["admin-basic-info-service"],
+          "children": ["admin-basic-info-service"]
         }
       }
     }
-  ]
+  ],
+  "meta": {
+    "filters": ["publicExposed"],
+    "mode": "chain"
+  }
 }
 ```
 
-Every node in the response carries:
+Each node contains `name`, `kind`, `language`, `publicExposed`, `vulnerabilities`, `neighbors`, and `children`.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Service name (unique identifier) |
-| `kind` | string | Node type: `service`, `rds`, `sqs`, etc. |
-| `language` | string? | Programming language, if present |
-| `publicExposed` | boolean? | Whether the service is publicly accessible |
-| `vulnerabilities` | array? | List of vulnerability objects (`file`, `severity`, `message`) |
-| `neighbors` | string[] | All immediate outgoing neighbours from this node (within the filtered subgraph) |
-| `children` | string[] | Subset of neighbours that are strictly deeper in the BFS level — useful for tree‑style rendering where edges should not go backwards |
+---
 
-### 5.1. How levels are computed — BFS from root nodes
+## Available filters
 
-The ordering algorithm (`buildNestedGraph` in `src/graph.helpers.ts`) works in three steps:
+| Filter          | Condition                            | Traversal direction |
+| --------------- | ------------------------------------ | ------------------- |
+| `publicExposed` | `publicExposed === true`             | Forward BFS         |
+| `sink`          | `kind === "rds"` or `kind === "sqs"` | Reverse BFS         |
+| `vulnerability` | `vulnerabilities.length > 0`         | Forward BFS         |
 
-1. **Find root nodes** — any node in the subgraph that has no incoming edges from other nodes in the same subgraph. If the subgraph is empty or contains only cycles, all nodes are placed at level 0.
+---
 
-2. **BFS traversal** — starting from the roots, each node is assigned `level = 1 + level(of parent)`. If a node can be reached via multiple paths, the *deepest* level is kept (longest‑path BFS). This ensures that nodes reachable only through a chain are pushed down the visual hierarchy.
+## Quick start
 
-3. **Populate `children`** — for each node, `children` is the subset of `neighbors` whose assigned level is strictly greater than the node's own level. This gives the frontend a ready‑to‑use parent‑child list for drawing directed edges top‑to‑bottom without needing to compute topological order on the client.
+```bash
+docker build -t graph-api .
+docker run -p 3000:3000 graph-api
+curl http://localhost:3000/health
+```
 
-### 5.2. Motivation for the nested format
+---
 
-The original `{ nodes, edges }` format is convenient for backend processing but shifts the layout burden to the frontend:
+## Project structure
 
-- **No layout algorithm required** — the client can simply iterate `response.levels` in order, drawing each level as a row from top to bottom, and connect parent nodes to their `children`. No BFS, no topological sort, no cycle detection on the client side.
-- **Self‑contained nodes** — each node knows its neighbours and children, so the frontend can render the complete graph by iterating the `Record` of nodes; no separate edge‑matching pass is needed.
-- **Cleaner handle on reverse edges** — `children` only includes edges that go forward in the hierarchy; a UI that draws directed edges can safely ignore backwards or same‑level connections without extra filtering.
-- **Performance** — the BFS and edge indexing are done once on the server (in `buildNestedGraph()`), so a slow client (e.g., a mobile web view) receives a structure it can render immediately with a single `Array.map` pass.
+```
+├── index.ts                    # Entry point
+├── packages/
+│   ├── app.ts                  # HTTP server + decorator routing
+│   ├── errors.ts               # Typed error classes
+│   └── dto/types.ts            # Shared response/query types
+├── src/
+│   ├── graph.entity.ts         # Graph data structure (maps, adjacency)
+│   ├── graph.traversal.ts      # BFS forward & reverse, DFS
+│   ├── graph.index.ts          # Pre-built filter start-node index
+│   ├── graph.filter.ts         # Filter registry + base class
+│   ├── graph.service.ts        # Query orchestration (chain/intersect)
+│   ├── graph.controller.ts     # HTTP endpoints
+│   ├── graph.loader.ts         # JSON file → Graph
+│   ├── graph.helpers.ts        # Level builder, edge indexer
+│   └── types.ts                # Domain types (GraphNode, Edge, etc.)
+└── tests/
+```
 
-If a flat `{ nodes, edges }` response is still needed for debugging or custom processing, it is trivial to derive it from the nested format by flattening `levels`.
+---
+
+## Scripts
+
+| Script           | Purpose                               |
+| ---------------- | ------------------------------------- |
+| `npm test`       | Run all tests (60 unit + integration) |
+| `npm run build`  | TypeScript compilation                |
+| `npm run lint`   | ESLint                                |
+| `npm run format` | Prettier                              |
+| `npm run check`  | Build + test + lint                   |

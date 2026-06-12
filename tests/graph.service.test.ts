@@ -2,27 +2,27 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Graph } from '../src/graph.entity';
 import { GraphService } from '../src/graph.service';
-import { NestedGraph } from '../src/graph.helpers';
+import { NestedGraph } from '../packages/dto/types';
 import { GraphNode, NormalizedEdge } from '../src/types';
 
 const testNodes: GraphNode[] = [
-    { name: 'frontend', kind: 'service', publicExposed: true },
-    { name: 'api-gateway', kind: 'service', publicExposed: true },
-    { name: 'auth-service', kind: 'service', vulnerabilities: [{ file: 'auth.ts', severity: 'high', message: 'XSS' }] },
-    { name: 'order-service', kind: 'service' },
-    { name: 'db', kind: 'rds' },
-    { name: 'cache', kind: 'elasticache' },
-    { name: 'queue', kind: 'sqs' },
+  { name: 'frontend', kind: 'service', publicExposed: true },
+  { name: 'api-gateway', kind: 'service', publicExposed: true },
+  { name: 'auth-service', kind: 'service', vulnerabilities: [{ file: 'auth.ts', severity: 'high', message: 'XSS' }] },
+  { name: 'order-service', kind: 'service' },
+  { name: 'db', kind: 'rds' },
+  { name: 'cache', kind: 'elasticache' },
+  { name: 'queue', kind: 'sqs' },
 ];
 
 const testEdges: NormalizedEdge[] = [
-    { from: 'frontend', to: 'api-gateway' },
-    { from: 'api-gateway', to: 'auth-service' },
-    { from: 'api-gateway', to: 'order-service' },
-    { from: 'auth-service', to: 'db' },
-    { from: 'order-service', to: 'db' },
-    { from: 'order-service', to: 'queue' },
-    { from: 'frontend', to: 'cache' },
+  { from: 'frontend', to: 'api-gateway' },
+  { from: 'api-gateway', to: 'auth-service' },
+  { from: 'api-gateway', to: 'order-service' },
+  { from: 'auth-service', to: 'db' },
+  { from: 'order-service', to: 'db' },
+  { from: 'order-service', to: 'queue' },
+  { from: 'frontend', to: 'cache' },
 ];
 
 /** Collect all node names from a nested graph. */

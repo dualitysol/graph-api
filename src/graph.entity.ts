@@ -1,5 +1,4 @@
 import { GraphNode, NormalizedEdge } from './types';
-import { addToMapSet } from './graph.helpers';
 
 export class Graph {
   private nodes: Map<string, GraphNode>;
@@ -8,14 +7,20 @@ export class Graph {
   private cachedNodes: GraphNode[];
   private allEdges: NormalizedEdge[];
 
-  private static readonly EMPTY_SET = new Set<string>();
+  private static readonly EMPTY_SET = Object.freeze(new Set<string>());
 
   constructor(nodes: GraphNode[], edges: NormalizedEdge[]) {
-    this.nodes = new Map(nodes.map((n) => [n.name, n]));
+    this.nodes = new Map();
     this.outgoing = new Map();
     this.incoming = new Map();
     this.cachedNodes = nodes;
     this.allEdges = edges;
+
+    for (const node of nodes) {
+      this.nodes.set(node.name, node);
+      this.outgoing.set(node.name, new Set());
+      this.incoming.set(node.name, new Set());
+    }
 
     for (const edge of edges) {
       if (!this.nodes.has(edge.from)) {
@@ -23,17 +28,20 @@ export class Graph {
         continue;
       }
       if (!this.nodes.has(edge.to)) {
-        console.warn(`[Graph] Broken edge: target "${edge.to}" not found among nodes (edge: ${edge.from} -> ${edge.to})`);
+        console.warn(
+          `[Graph] Broken edge: target "${edge.to}" not found among nodes (edge: ${edge.from} -> ${edge.to})`,
+        );
         continue;
       }
-      addToMapSet(this.outgoing, edge.from, edge.to);
-      addToMapSet(this.incoming, edge.to, edge.from);
+
+      this.outgoing.get(edge.from)!.add(edge.to);
+      this.incoming.get(edge.to)!.add(edge.from);
     }
 
-    // Log isolated nodes (no incoming or outgoing edges)
+    // Log isolated nodes — needs edges populated, so must be a separate pass
     for (const node of nodes) {
-      const hasOutgoing = this.outgoing.has(node.name);
-      const hasIncoming = this.incoming.has(node.name);
+      const hasOutgoing = this.outgoing.get(node.name)!.size > 0;
+      const hasIncoming = this.incoming.get(node.name)!.size > 0;
       if (!hasOutgoing && !hasIncoming) {
         console.warn(`[Graph] Isolated node: "${node.name}" has no edges`);
       }
@@ -52,11 +60,11 @@ export class Graph {
     return this.allEdges;
   }
 
-  getNeighbors(name: string): Set<string> {
+  getNeighbors(name: string): ReadonlySet<string> {
     return this.outgoing.get(name) ?? Graph.EMPTY_SET;
   }
 
-  getParents(name: string): Set<string> {
+  getParents(name: string): ReadonlySet<string> {
     return this.incoming.get(name) ?? Graph.EMPTY_SET;
   }
 
@@ -89,4 +97,3 @@ export class Graph {
     return { nodes, edges };
   }
 }
-

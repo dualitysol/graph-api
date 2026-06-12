@@ -13,7 +13,6 @@ export class ApiError extends Error {
     return {
       error: this.code,
       message: this.message,
-      timestamp: Date.now(),
     };
   }
 }
@@ -60,6 +59,6 @@ export class ForbiddenError extends ApiError {
   }
 }
 
-export function isApiError(error: any): error is ApiError {
+export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }

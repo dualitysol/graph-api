@@ -21,8 +21,9 @@ export class GraphTraversal {
       }
     });
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
+    let head = 0;
+    while (head < queue.length) {
+      const current = queue[head++];
 
       this.graph.getNeighbors(current).forEach(neighbor => {
         if (!visited.has(neighbor)) {
@@ -49,8 +50,9 @@ export class GraphTraversal {
       }
     });
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
+    let head = 0;
+    while (head < queue.length) {
+      const current = queue[head++];
 
       this.graph.getParents(current).forEach(parent => {
         if (!visited.has(parent)) {

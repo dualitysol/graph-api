@@ -117,18 +117,21 @@ describe('Filters', () => {
       const { traversal, graph, index } = setup();
       const filter = createFilter('publicExposed');
 
-      const subgraph = new Graph(
-        [nodes[0], nodes[1], nodes[3], nodes[4]],
-        [edges[0], edges[3]]
-      );
+      const subgraph = new Graph([nodes[0], nodes[1], nodes[3], nodes[4]], [edges[0], edges[3]]);
 
       const result = filter.apply(traversal, graph, index, subgraph);
       // frontend -> api-gateway -> cache, db is NOT reachable because auth-service is not in subgraph
       assert.ok(result.nodes.some(n => n.name === 'frontend'));
       assert.ok(result.nodes.some(n => n.name === 'api-gateway'));
       assert.ok(result.nodes.some(n => n.name === 'cache'));
-      assert.equal(result.nodes.some(n => n.name === 'db'), false);
-      assert.equal(result.nodes.some(n => n.name === 'auth-service'), false);
+      assert.equal(
+        result.nodes.some(n => n.name === 'db'),
+        false,
+      );
+      assert.equal(
+        result.nodes.some(n => n.name === 'auth-service'),
+        false,
+      );
     });
   });
 });

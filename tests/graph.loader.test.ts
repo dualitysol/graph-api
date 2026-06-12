@@ -18,7 +18,10 @@ const makeGraphFile = (graph: RawGraph): string => {
 describe('GraphLoader', () => {
   it('should create a Graph from file', () => {
     const filePath = makeGraphFile({
-      nodes: [{ name: 'A', kind: 'service', publicExposed: true }, { name: 'B', kind: 'rds' }],
+      nodes: [
+        { name: 'A', kind: 'service', publicExposed: true },
+        { name: 'B', kind: 'rds' },
+      ],
       edges: [{ from: 'A', to: 'B' }],
     });
 
@@ -31,7 +34,10 @@ describe('GraphLoader', () => {
 
   it('should normalize edges with single target', () => {
     const filePath = makeGraphFile({
-      nodes: [{ name: 'A', kind: 'service', publicExposed: true }, { name: 'B', kind: 'rds' }],
+      nodes: [
+        { name: 'A', kind: 'service', publicExposed: true },
+        { name: 'B', kind: 'rds' },
+      ],
       edges: [{ from: 'A', to: 'B' }],
     });
 
@@ -66,4 +72,3 @@ describe('GraphLoader', () => {
     assert.equal(graph.getAllEdges().length, 0);
   });
 });
-
