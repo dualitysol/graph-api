@@ -1,4 +1,4 @@
-import { describe, it, after, afterEach } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
 import path from 'path';
@@ -16,18 +16,17 @@ const makeGraphFile = (graph: RawGraph): string => {
 };
 
 describe('GraphLoader', () => {
-  afterEach(() => GraphLoader.resetInstance());
-
-  it('should load graph from file', () => {
+  it('should create a Graph from file', () => {
     const filePath = makeGraphFile({
       nodes: [{ name: 'A', kind: 'service', publicExposed: true }, { name: 'B', kind: 'rds' }],
       edges: [{ from: 'A', to: 'B' }],
     });
 
-    const loader = GraphLoader.getInstance();
-    loader.loadGraph(filePath);
-    assert.equal(loader.getGraph().nodes.length, 2);
-    assert.equal(loader.getGraph().edges.length, 1);
+    const graph = GraphLoader.load(filePath);
+    assert.equal(graph.getNodes().length, 2);
+    assert.equal(graph.getAllEdges().length, 1);
+    assert.ok(graph.hasNode('A'));
+    assert.ok(graph.hasNode('B'));
   });
 
   it('should normalize edges with single target', () => {
@@ -36,12 +35,9 @@ describe('GraphLoader', () => {
       edges: [{ from: 'A', to: 'B' }],
     });
 
-    const loader = GraphLoader.getInstance();
-    loader.loadGraph(filePath);
-    const edges = loader.getNormalizedEdges();
-    assert.equal(edges.length, 1);
-    assert.equal(edges[0].from, 'A');
-    assert.equal(edges[0].to, 'B');
+    const graph = GraphLoader.load(filePath);
+    assert.equal(graph.getAllEdges().length, 1);
+    assert.deepEqual([...graph.getNeighbors('A')], ['B']);
   });
 
   it('should normalize edges with array target', () => {
@@ -54,29 +50,20 @@ describe('GraphLoader', () => {
       edges: [{ from: 'A', to: ['B', 'C'] }],
     });
 
-    const loader = GraphLoader.getInstance();
-    loader.loadGraph(filePath);
-    const edges = loader.getNormalizedEdges();
-    assert.equal(edges.length, 2);
-    assert.equal(edges[0].to, 'B');
-    assert.equal(edges[1].to, 'C');
+    const graph = GraphLoader.load(filePath);
+    assert.equal(graph.getAllEdges().length, 2);
+    assert.deepEqual([...graph.getNeighbors('A')], ['B', 'C']);
   });
 
-  it('should throw when graph not loaded', () => {
-    const loader = GraphLoader.getInstance();
-    assert.throws(() => loader.getGraph(), /Graph not loaded/);
-  });
-
-  it('should return cached graph on second getGraph call', () => {
+  it('should handle file with no edges', () => {
     const filePath = makeGraphFile({
       nodes: [{ name: 'A', kind: 'service' }],
       edges: [],
     });
 
-    const loader = GraphLoader.getInstance();
-    loader.loadGraph(filePath);
-    const graph1 = loader.getGraph();
-    const graph2 = loader.getGraph();
-    assert.equal(graph1, graph2);
+    const graph = GraphLoader.load(filePath);
+    assert.equal(graph.getNodes().length, 1);
+    assert.equal(graph.getAllEdges().length, 0);
   });
 });
+

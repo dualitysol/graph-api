@@ -3,9 +3,12 @@ import { GraphService, QueryMode } from './graph.service';
 import { RequestParser } from '../packages/dto/request.parser';
 import { BadRequestError } from '../packages/errors';
 
-const graphService = new GraphService();
-
 export class GraphController {
+  private graphService: GraphService;
+
+  constructor(graphService: GraphService) {
+    this.graphService = graphService;
+  }
 
   @Route('GET', '/graph')
   async getGraph(req: any) {
@@ -16,7 +19,7 @@ export class GraphController {
     const mode: QueryMode = req?.query?.mode === 'intersect' ? 'intersect' : 'chain';
 
     try {
-      return graphService.queryGraph(filters ?? [], mode);
+      return this.graphService.queryGraph(filters ?? [], mode);
     } catch (e: any) {
       throw new BadRequestError(e?.message || 'Invalid request');
     }

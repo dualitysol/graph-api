@@ -2,7 +2,6 @@ import { Graph } from './graph.entity';
 import { GraphTraversal } from './graph.traversal';
 import { GraphIndex } from './graph.index';
 import { createFilter } from './graph.filter';
-import { GraphLoader } from './graph.loader';
 import { GraphNode, NormalizedEdge } from './types';
 import { indexEdges } from './graph.helpers';
 
@@ -13,14 +12,11 @@ export class GraphService {
   private traversal: GraphTraversal;
   private index: GraphIndex;
 
-  constructor() {
-    const loader = GraphLoader.getInstance();
-    const rawGraph = loader.getGraph();
-    const edges = loader.getNormalizedEdges();
-    this.graph = new Graph(rawGraph.nodes, edges);
+  constructor(graph: Graph) {
+    this.graph = graph;
     this.traversal = new GraphTraversal(this.graph);
     this.index = new GraphIndex();
-    this.index.build(rawGraph.nodes);
+    this.index.build(graph.getNodes());
   }
 
   queryGraph(

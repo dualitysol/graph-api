@@ -1,14 +1,13 @@
-import { describe, it, after, afterEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { RawGraph } from '../src/types';
-import { GraphLoader } from '../src/graph.loader';
+import { Graph } from '../src/graph.entity';
 import { GraphService } from '../src/graph.service';
+import { GraphNode, NormalizedEdge } from '../src/types';
 
-const testGraph: RawGraph = {
-  nodes: [
+const testNodes: GraphNode[] = [
     { name: 'frontend', kind: 'service', publicExposed: true },
     { name: 'api-gateway', kind: 'service', publicExposed: true },
     { name: 'auth-service', kind: 'service', vulnerabilities: [{ file: 'auth.ts', severity: 'high', message: 'XSS' }] },
@@ -16,8 +15,9 @@ const testGraph: RawGraph = {
     { name: 'db', kind: 'rds' },
     { name: 'cache', kind: 'elasticache' },
     { name: 'queue', kind: 'sqs' },
-  ],
-  edges: [
+];
+
+const testEdges: NormalizedEdge[] = [
     { from: 'frontend', to: 'api-gateway' },
     { from: 'api-gateway', to: 'auth-service' },
     { from: 'api-gateway', to: 'order-service' },
@@ -25,26 +25,13 @@ const testGraph: RawGraph = {
     { from: 'order-service', to: 'db' },
     { from: 'order-service', to: 'queue' },
     { from: 'frontend', to: 'cache' },
-  ],
-};
-
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graph-service-test-'));
-after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
-
+];
 const setupService = (): GraphService => {
-  GraphLoader.resetInstance();
-
-  const filePath = path.join(tmpDir, `graph-${crypto.randomUUID()}.json`);
-  fs.writeFileSync(filePath, JSON.stringify(testGraph), 'utf-8');
-
-  const loader = GraphLoader.getInstance();
-  loader.loadGraph(filePath);
-  return new GraphService();
+  const graph = new Graph(testNodes, testEdges);
+  return new GraphService(graph);
 };
 
 describe('GraphService', () => {
-  afterEach(() => GraphLoader.resetInstance());
-
   it('should return full graph without filters', () => {
     const svc = setupService();
     const result = svc.queryGraph();
@@ -92,3 +79,4 @@ describe('GraphService', () => {
     });
   });
 });
+
